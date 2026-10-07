@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using UnityEngine;
@@ -13,7 +14,14 @@ using Random = UnityEngine.Random;
 using UnityEditor;
 #endif
 
-namespace EMT
+// DOTween y TextMeshPro solo se usan en DOCounter. El símbolo DOTWEEN lo define
+// el setup de DOTween; así el archivo compila también en proyectos que no lo tengan.
+#if DOTWEEN
+using DG.Tweening;
+using TMPro;
+#endif
+
+namespace EMT.Core
 {
     /// <summary>
     /// Colección de utilidades generales: listas, texto, fechas, validaciones
@@ -100,6 +108,81 @@ namespace EMT
             }
         }
 
+        /// <summary>
+        /// Devuelve un elemento aleatorio de la lista.
+        /// Lanza <see cref="InvalidOperationException"/> si la lista está vacía.
+        /// </summary>
+        public static T GetRandomElement<T>(this IList<T> list)
+        {
+            if (list == null)
+                throw new ArgumentNullException(nameof(list));
+
+            if (list.Count == 0)
+                throw new InvalidOperationException("No se puede elegir un elemento de una lista vacía.");
+
+            return list[Random.Range(0, list.Count)]; // max exclusivo en int
+        }
+
+        /// <summary>
+        /// Devuelve un elemento aleatorio distinto de <paramref name="excluded"/>.
+        /// Todos los candidatos tienen la misma probabilidad y nunca entra en un bucle:
+        /// si no hay ninguna alternativa (lista de un elemento o todos iguales al excluido)
+        /// devuelve un elemento cualquiera. Devuelve default si la lista es nula o está vacía.
+        /// </summary>
+        /// <param name="list">Lista de la que se elige.</param>
+        /// <param name="excluded">Elemento que se quiere evitar.</param>
+        public static T GetRandomExcluding<T>(this IList<T> list, T excluded)
+        {
+            if (list == null || list.Count == 0)
+                return default;
+
+            EqualityComparer<T> comparer = EqualityComparer<T>.Default;
+
+            // Primera pasada: contar los candidatos válidos (sin asignar memoria).
+            int validCount = 0;
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (!comparer.Equals(list[i], excluded))
+                    validCount++;
+            }
+
+            // Sin alternativa: no queda más remedio que repetir.
+            if (validCount == 0)
+                return list[Random.Range(0, list.Count)];
+
+            // Segunda pasada: avanzar hasta el candidato válido número k.
+            int target = Random.Range(0, validCount);
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (comparer.Equals(list[i], excluded))
+                    continue;
+
+                if (target == 0)
+                    return list[i];
+
+                target--;
+            }
+
+            // Inalcanzable: validCount garantiza que se encontró un candidato.
+            return default;
+        }
+
+        /// <summary>
+        /// Indica si la secuencia es nula o no tiene elementos.
+        /// Para colecciones usa Count; para el resto solo avanza un elemento (no la recorre completa).
+        /// </summary>
+        public static bool IsNullOrEmpty<T>(this IEnumerable<T> source)
+        {
+            if (source == null)
+                return true;
+
+            if (source is ICollection<T> collection)
+                return collection.Count == 0;
+
+            using (IEnumerator<T> enumerator = source.GetEnumerator())
+                return !enumerator.MoveNext();
+        }
+
         #endregion
 
         #region Encoding
@@ -146,6 +229,32 @@ namespace EMT
             catch (FormatException)
             {
                 return false;
+            }
+        }
+
+        private const string HexDigits = "0123456789abcdef";
+
+        /// <summary>
+        /// Calcula el hash SHA-256 de un texto (UTF-8) y lo devuelve en hexadecimal minúscula (64 caracteres).
+        /// Devuelve vacío si el texto es nulo o vacío.
+        /// </summary>
+        public static string ComputeSha256(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return string.Empty;
+
+            using (SHA256 sha = SHA256.Create())
+            {
+                byte[] hash = sha.ComputeHash(Encoding.UTF8.GetBytes(text));
+                char[] chars = new char[hash.Length * 2];
+
+                for (int i = 0; i < hash.Length; i++)
+                {
+                    chars[i * 2] = HexDigits[hash[i] >> 4];
+                    chars[i * 2 + 1] = HexDigits[hash[i] & 0x0F];
+                }
+
+                return new string(chars);
             }
         }
 
@@ -284,11 +393,114 @@ namespace EMT
             if (string.IsNullOrEmpty(text))
                 return text;
 
+            return ReplaceAccents(text, graveToAcute: false);
+        }
+
+        /// <summary>
+        /// Convierte las vocales con tilde grave en su versión con tilde aguda
+        /// (à → á, è → é, ì → í, ò → ó, ù → ú, y sus mayúsculas).
+        /// Útil para corregir textos mal escritos con tilde invertida.
+        /// Si no hay nada que corregir se devuelve la misma instancia.
+        /// </summary>
+        public static string FixGraveAccents(this string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return text;
+
+            return ReplaceAccents(text, graveToAcute: true);
+        }
+
+        /// <summary>
+        /// Convierte el texto a "Formato Título": primera letra de cada palabra en mayúscula
+        /// y el resto en minúscula (cultura invariante).
+        /// </summary>
+        public static string ToTitleCase(this string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return text;
+
+            // ToTitleCase no modifica palabras que ya están completamente en mayúsculas,
+            // por eso se pasa primero a minúscula.
+            return CultureInfo.InvariantCulture.TextInfo.ToTitleCase(text.ToLowerInvariant());
+        }
+
+        /// <summary>
+        /// Convierte un texto en un "slug" apto para URLs o IDs: minúsculas, sin tildes ni ñ,
+        /// solo letras a-z y números, con los demás caracteres colapsados en un único separador.
+        /// Ejemplo: "  ¡Niño Ágil, 2024!  " → "nino-agil-2024".
+        /// </summary>
+        /// <param name="text">Texto a convertir.</param>
+        /// <param name="separator">Carácter separador (por defecto '-').</param>
+        public static string Slugify(this string text, char separator = '-')
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return string.Empty;
+
+            // Nunca se necesita más espacio que la longitud original:
+            // cada separador insertado corresponde a al menos un carácter descartado.
+            char[] buffer = new char[text.Length];
+            int length = 0;
+            bool separatorPending = false;
+
+            for (int i = 0; i < text.Length; i++)
+            {
+                char c = StripAccent(text[i]);
+
+                if (c == 'ñ' || c == 'Ñ')
+                    c = 'n';
+
+                c = char.ToLowerInvariant(c);
+
+                if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'))
+                {
+                    if (separatorPending && length > 0)
+                        buffer[length++] = separator;
+
+                    separatorPending = false;
+                    buffer[length++] = c;
+                }
+                else
+                {
+                    separatorPending = true;
+                }
+            }
+
+            return new string(buffer, 0, length);
+        }
+
+        /// <summary>
+        /// Oculta la parte local de un email dejando solo el primer carácter.
+        /// Ejemplo: "juan@mail.com" → "j***@mail.com".
+        /// Si el texto no tiene un '@' válido se devuelve sin modificar.
+        /// </summary>
+        /// <param name="email">Email a ocultar.</param>
+        /// <param name="maskChar">Carácter de enmascarado.</param>
+        public static string MaskEmail(this string email, char maskChar = '*')
+        {
+            if (string.IsNullOrEmpty(email))
+                return email;
+
+            int atIndex = email.IndexOf('@');
+            if (atIndex <= 0)
+                return email;
+
+            return email[0] + new string(maskChar, 3) + email.Substring(atIndex);
+        }
+
+        /// <summary>
+        /// Núcleo común de RemoveAccents y FixGraveAccents: reemplaza carácter a carácter
+        /// en dos pasadas, haciendo una única copia del texto solo si hay algo que cambiar.
+        /// </summary>
+        /// <param name="text">Texto no nulo.</param>
+        /// <param name="graveToAcute">True: grave → aguda. False: quitar la tilde.</param>
+        private static string ReplaceAccents(string text, bool graveToAcute)
+        {
             // Primera pasada: buscar el primer carácter a reemplazar (sin asignar memoria).
             int firstIndex = -1;
             for (int i = 0; i < text.Length; i++)
             {
-                if (StripAccent(text[i]) != text[i])
+                char c = text[i];
+                if ((graveToAcute ? GraveToAcute(c) : StripAccent(c)) != c)
                 {
                     firstIndex = i;
                     break;
@@ -301,9 +513,30 @@ namespace EMT
             // Segunda pasada: una sola copia del texto en lugar de una por cada Replace.
             char[] chars = text.ToCharArray();
             for (int i = firstIndex; i < chars.Length; i++)
-                chars[i] = StripAccent(chars[i]);
+                chars[i] = graveToAcute ? GraveToAcute(chars[i]) : StripAccent(chars[i]);
 
             return new string(chars);
+        }
+
+        /// <summary>
+        /// Devuelve la vocal con tilde aguda si recibe una con tilde grave (o el mismo carácter si no aplica).
+        /// </summary>
+        private static char GraveToAcute(char c)
+        {
+            switch (c)
+            {
+                case 'à': return 'á';
+                case 'è': return 'é';
+                case 'ì': return 'í';
+                case 'ò': return 'ó';
+                case 'ù': return 'ú';
+                case 'À': return 'Á';
+                case 'È': return 'É';
+                case 'Ì': return 'Í';
+                case 'Ò': return 'Ó';
+                case 'Ù': return 'Ú';
+                default: return c;
+            }
         }
 
         /// <summary>
@@ -526,6 +759,187 @@ namespace EMT
 
         #endregion
 
+        #region Weekdays & Date Math
+
+        /// <summary>Nombres de los días en español, en el mismo orden que <see cref="Weekday"/> (lunes = 0).</summary>
+        private static readonly string[] WeekdayNames =
+        {
+            "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"
+        };
+
+        /// <summary>
+        /// Devuelve la fecha de hoy sin la hora.
+        /// </summary>
+        public static DateTime GetToday()
+        {
+            return DateTime.Today;
+        }
+
+        /// <summary>
+        /// Suma (o resta, si es negativo) días a una fecha.
+        /// </summary>
+        public static DateTime AddDays(DateTime date, int days)
+        {
+            return date.AddDays(days);
+        }
+
+        /// <summary>
+        /// Devuelve el día de la semana en español junto con la fecha (dd/MM/yyyy, cultura invariante).
+        /// Ejemplo: "Miércoles 07/10/2026".
+        /// </summary>
+        public static string FormatWeekdayWithDate(DateTime date)
+        {
+            string dayName = WeekdayNames[(int)ToWeekday(date.DayOfWeek)];
+            return dayName + " " + date.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>
+        /// Convierte un <see cref="DayOfWeek"/> de .NET (domingo = 0) a <see cref="Weekday"/> (lunes = 0).
+        /// Devuelve <see cref="Weekday.Invalid"/> si el valor está fuera de rango.
+        /// </summary>
+        public static Weekday ToWeekday(DayOfWeek day)
+        {
+            int value = (int)day;
+
+            if (value < 0 || value > 6)
+                return Weekday.Invalid;
+
+            // Domingo (0) pasa a 6; el resto se desplaza una posición.
+            return (Weekday)((value + 6) % 7);
+        }
+
+        /// <summary>
+        /// Convierte un <see cref="Weekday"/> (lunes = 0) a <see cref="DayOfWeek"/> de .NET (domingo = 0).
+        /// Lanza <see cref="ArgumentOutOfRangeException"/> si el valor es <see cref="Weekday.Invalid"/>.
+        /// </summary>
+        public static DayOfWeek ToDayOfWeek(Weekday day)
+        {
+            int value = (int)day;
+
+            if (value < (int)Weekday.Monday || value > (int)Weekday.Sunday)
+                throw new ArgumentOutOfRangeException(nameof(day), day, "El día de la semana no es válido.");
+
+            return (DayOfWeek)((value + 1) % 7);
+        }
+
+        /// <summary>
+        /// Convierte un índice (0 = lunes ... 6 = domingo) a <see cref="DayOfWeek"/>.
+        /// Lanza <see cref="ArgumentOutOfRangeException"/> si el índice no está entre 0 y 6.
+        /// </summary>
+        public static DayOfWeek DayOfWeekFromIndex(int index)
+        {
+            if (index < 0 || index > 6)
+                throw new ArgumentOutOfRangeException(nameof(index), index, "El índice debe estar entre 0 (lunes) y 6 (domingo).");
+
+            return (DayOfWeek)((index + 1) % 7);
+        }
+
+        /// <summary>
+        /// Calcula la fecha del próximo día de la semana indicado a partir de una fecha base.
+        /// Siempre es posterior a la fecha base: si ese día ya coincide, devuelve el de la semana siguiente (+7 días).
+        /// </summary>
+        /// <param name="baseDate">Fecha de partida.</param>
+        /// <param name="desiredDay">Día de la semana buscado.</param>
+        public static DateTime GetNextWeekday(DateTime baseDate, DayOfWeek desiredDay)
+        {
+            int daysUntilNext = ((int)desiredDay - (int)baseDate.DayOfWeek + 7) % 7;
+
+            if (daysUntilNext == 0)
+                daysUntilNext = 7;
+
+            return baseDate.AddDays(daysUntilNext);
+        }
+
+        #endregion
+
+        #region Numbers & Time Formatting
+
+        private static readonly string[] CompactSuffixes = { "", "K", "M", "B", "T" };
+
+        /// <summary>
+        /// Convierte segundos a texto "mm:ss", o "hh:mm:ss" si hay horas
+        /// (o si <paramref name="forceHours"/> es true). Los valores negativos o inválidos se tratan como 0.
+        /// </summary>
+        /// <param name="seconds">Tiempo en segundos.</param>
+        /// <param name="forceHours">Mostrar siempre las horas.</param>
+        public static string FormatTime(float seconds, bool forceHours = false)
+        {
+            if (float.IsNaN(seconds) || float.IsInfinity(seconds) || seconds < 0f)
+                seconds = 0f;
+
+            // Límite para evitar desbordamiento al convertir a long.
+            long total = (long)Math.Min(seconds, 3.6e9f);
+            long hours = total / 3600;
+            long minutes = (total % 3600) / 60;
+            long secs = total % 60;
+
+            if (hours > 0 || forceHours)
+                return $"{hours:00}:{minutes:00}:{secs:00}";
+
+            return $"{minutes:00}:{secs:00}";
+        }
+
+        /// <summary>
+        /// Abrevia un número grande: 1500 → "1.5K", 2300000 → "2.3M".
+        /// Trunca (no redondea), por lo que 1999 → "1.9K" y nunca se obtiene "1000K".
+        /// Usa cultura invariante (punto decimal).
+        /// </summary>
+        /// <param name="value">Número a abreviar.</param>
+        /// <param name="decimals">Decimales máximos (0 a 3).</param>
+        public static string FormatCompactNumber(long value, int decimals = 1)
+        {
+            decimals = Mathf.Clamp(decimals, 0, 3);
+
+            if (value > -1000 && value < 1000)
+                return value.ToString(CultureInfo.InvariantCulture);
+
+            // decimal evita errores de coma flotante al truncar (ej. 4.35 * 100 = 434.999...).
+            decimal absolute = Math.Abs((decimal)value);
+            int suffixIndex = 0;
+
+            while (absolute >= 1000m && suffixIndex < CompactSuffixes.Length - 1)
+            {
+                absolute /= 1000m;
+                suffixIndex++;
+            }
+
+            decimal factor = 1m;
+            for (int i = 0; i < decimals; i++)
+                factor *= 10m;
+
+            absolute = Math.Floor(absolute * factor) / factor;
+
+            string format = decimals == 0 ? "0" : "0." + new string('#', decimals);
+            string sign = value < 0 ? "-" : string.Empty;
+
+            return sign + absolute.ToString(format, CultureInfo.InvariantCulture) + CompactSuffixes[suffixIndex];
+        }
+
+        /// <summary>
+        /// Reescala un valor de un rango a otro. Ejemplo: 5.Remap(0, 10, 0, 100) = 50.
+        /// </summary>
+        /// <param name="value">Valor a reescalar.</param>
+        /// <param name="fromMin">Mínimo del rango de origen.</param>
+        /// <param name="fromMax">Máximo del rango de origen.</param>
+        /// <param name="toMin">Mínimo del rango de destino.</param>
+        /// <param name="toMax">Máximo del rango de destino.</param>
+        /// <param name="clamp">Si es true, el resultado no sale del rango de destino.</param>
+        public static float Remap(this float value, float fromMin, float fromMax, float toMin, float toMax, bool clamp = false)
+        {
+            // Rango de origen de tamaño cero: evita la división por cero.
+            if (Mathf.Approximately(fromMin, fromMax))
+                return toMin;
+
+            float t = (value - fromMin) / (fromMax - fromMin);
+
+            if (clamp)
+                t = Mathf.Clamp01(t);
+
+            return Mathf.LerpUnclamped(toMin, toMax, t);
+        }
+
+        #endregion
+
         #region Validation
 
         /// <summary>
@@ -577,6 +991,16 @@ namespace EMT
         #endregion
 
         #region GameObject & Component Helpers
+
+        /// <summary>
+        /// Convierte un Transform en RectTransform (para objetos de UI).
+        /// Lanza <see cref="InvalidCastException"/> si el objeto no tiene RectTransform,
+        /// lo que delata el error de inmediato en lugar de fallar más adelante.
+        /// </summary>
+        public static RectTransform ToRectTransform(this Transform transform)
+        {
+            return (RectTransform)transform;
+        }
 
         /// <summary>
         /// Desactiva el objeto si existe y está activo.
@@ -700,14 +1124,163 @@ namespace EMT
 
         /// <summary>
         /// Devuelve el componente del objeto o lo crea si no existe.
+        /// Devuelve null si el objeto es nulo o fue destruido.
         /// </summary>
-        private static T GetOrAddComponent<T>(GameObject target)
+        public static T GetOrAddComponent<T>(this GameObject target)
             where T : Component
         {
+            if (target == null)
+                return null;
+
             T component = target.GetComponent<T>();
-            return component ?? target.AddComponent<T>();
+            return component != null ? component : target.AddComponent<T>();
+        }
+
+        /// <summary>
+        /// Destruye todos los hijos directos de un Transform.
+        /// En ejecución usa Destroy (la destrucción real ocurre al final del frame);
+        /// en modo edición usa DestroyImmediate.
+        /// </summary>
+        public static void DestroyAllChildren(this Transform parent)
+        {
+            if (parent == null)
+                return;
+
+            // Se recorre al revés por seguridad ante destrucciones inmediatas.
+            for (int i = parent.childCount - 1; i >= 0; i--)
+            {
+                GameObject child = parent.GetChild(i).gameObject;
+
+                if (Application.isPlaying)
+                    Object.Destroy(child);
+                else
+                    Object.DestroyImmediate(child);
+            }
+        }
+
+        /// <summary>
+        /// Asigna una capa al objeto y a todos sus descendientes (activos o no).
+        /// </summary>
+        /// <param name="obj">Objeto raíz.</param>
+        /// <param name="layer">Índice de capa (0 a 31).</param>
+        public static void SetLayerRecursively(this GameObject obj, int layer)
+        {
+            if (obj == null)
+                return;
+
+            obj.layer = layer;
+
+            // Recursión sobre Transform: evita el array que crearía GetComponentsInChildren.
+            Transform transform = obj.transform;
+            for (int i = 0; i < transform.childCount; i++)
+                transform.GetChild(i).gameObject.SetLayerRecursively(layer);
         }
 
         #endregion
+
+        #region Vector Helpers
+
+        /// <summary>Devuelve una copia del vector con el eje X reemplazado.</summary>
+        public static Vector3 WithX(this Vector3 vector, float x)
+        {
+            return new Vector3(x, vector.y, vector.z);
+        }
+
+        /// <summary>Devuelve una copia del vector con el eje Y reemplazado.</summary>
+        public static Vector3 WithY(this Vector3 vector, float y)
+        {
+            return new Vector3(vector.x, y, vector.z);
+        }
+
+        /// <summary>Devuelve una copia del vector con el eje Z reemplazado.</summary>
+        public static Vector3 WithZ(this Vector3 vector, float z)
+        {
+            return new Vector3(vector.x, vector.y, z);
+        }
+
+        /// <summary>
+        /// Devuelve un punto aleatorio dentro de la caja definida por dos vectores
+        /// (cada eje se sortea de forma independiente entre min y max).
+        /// </summary>
+        public static Vector3 RandomRange(Vector3 min, Vector3 max)
+        {
+            return new Vector3(
+                Random.Range(min.x, max.x),
+                Random.Range(min.y, max.y),
+                Random.Range(min.z, max.z));
+        }
+
+        #endregion
+
+        #region Color Helpers
+
+        /// <summary>
+        /// Convierte un color a texto hexadecimal: "#RRGGBB", o "#RRGGBBAA" si se incluye el alfa.
+        /// </summary>
+        public static string ToHex(this Color color, bool includeAlpha = false)
+        {
+            return "#" + (includeAlpha
+                ? ColorUtility.ToHtmlStringRGBA(color)
+                : ColorUtility.ToHtmlStringRGB(color));
+        }
+
+        /// <summary>
+        /// Convierte un texto hexadecimal ("#RGB", "#RGBA", "#RRGGBB" o "#RRGGBBAA", con o sin '#') a color.
+        /// Lanza <see cref="FormatException"/> si el texto no es válido; usar
+        /// <see cref="TryHexToColor"/> para evitar la excepción.
+        /// </summary>
+        public static Color HexToColor(string hex)
+        {
+            if (!TryHexToColor(hex, out Color color))
+                throw new FormatException($"'{hex}' no es un color hexadecimal válido.");
+
+            return color;
+        }
+
+        /// <summary>
+        /// Versión sin excepciones de <see cref="HexToColor"/>. Si falla, el color de salida no es significativo.
+        /// </summary>
+        public static bool TryHexToColor(string hex, out Color color)
+        {
+            color = Color.white;
+
+            if (string.IsNullOrWhiteSpace(hex))
+                return false;
+
+            hex = hex.Trim();
+
+            // ColorUtility exige el '#' al inicio.
+            if (hex[0] != '#')
+                hex = "#" + hex;
+
+            return ColorUtility.TryParseHtmlString(hex, out color);
+        }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Dirección horizontal.
+    /// </summary>
+    public enum Direction
+    {
+        Left,
+        Right
+    }
+
+    /// <summary>
+    /// Día de la semana empezando en lunes (Monday = 0 ... Sunday = 6).
+    /// A diferencia de <see cref="DayOfWeek"/>, donde domingo = 0.
+    /// </summary>
+    public enum Weekday
+    {
+        Monday = 0,
+        Tuesday = 1,
+        Wednesday = 2,
+        Thursday = 3,
+        Friday = 4,
+        Saturday = 5,
+        Sunday = 6,
+        Invalid = 7
     }
 }
