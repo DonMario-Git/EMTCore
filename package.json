@@ -1,0 +1,18 @@
+{
+  "name": "com.emt.core",
+  "version": "1.0.0",
+  "displayName": "EMT Core",
+  "description": "Core of emt games code",
+  "unity": "2022.3",
+  "keywords": [
+    "emt",
+    "core"
+  ],
+  "author": {
+    "name": "EMT"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DonMario-Git/EMTCore.git"
+  }
+}
