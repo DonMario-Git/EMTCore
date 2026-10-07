@@ -1,8 +1,8 @@
 {
   "name": "com.emt.core",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "displayName": "EMT Core",
-  "description": "Core of emt games code",
+  "description": "Core of emt games code, require: https://github.com/DonMario-Git/EMTPackageManager.git",
   "unity": "2022.3",
   "keywords": [
     "emt",
@@ -16,6 +16,6 @@
     "url": "https://github.com/DonMario-Git/EMTCore.git"
   },
   "dependencies": {
-    "com.emt.package-manager": "https://github.com/DonMario-Git/EMTPackageManager.git"
+    "com.emt.package-manager": "1.0.3"
   }
 }
