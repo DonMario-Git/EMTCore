@@ -1,6 +1,6 @@
 {
   "name": "com.emt.core",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "displayName": "EMT Core",
   "description": "Core of emt games code",
   "unity": "2022.3",
