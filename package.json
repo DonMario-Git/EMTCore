@@ -14,5 +14,8 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/DonMario-Git/EMTCore.git"
+  },
+  "dependencies": {
+    "com.emt.package-manager": "https://github.com/DonMario-Git/EMTPackageManager.git"
   }
 }
