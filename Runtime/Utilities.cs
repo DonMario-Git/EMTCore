@@ -1003,60 +1003,6 @@ namespace EMT.Core
         }
 
         /// <summary>
-        /// Desactiva el objeto si existe y está activo.
-        /// </summary>
-        public static void DeactivateObject(this GameObject obj)
-        {
-            if (obj != null && obj.activeSelf)
-                obj.SetActive(false);
-        }
-
-        /// <summary>
-        /// Activa el objeto si existe y está inactivo.
-        /// </summary>
-        public static void ActivateObject(this GameObject obj)
-        {
-            if (obj != null && !obj.activeSelf)
-                obj.SetActive(true);
-        }
-
-        /// <summary>
-        /// Desactiva un componente (MonoBehaviour, Animator, etc.) si existe.
-        /// </summary>
-        public static void DisableComponent(this Behaviour component)
-        {
-            if (component != null)
-                component.enabled = false;
-        }
-
-        /// <summary>
-        /// Activa un componente (MonoBehaviour, Animator, etc.) si existe.
-        /// </summary>
-        public static void EnableComponent(this Behaviour component)
-        {
-            if (component != null)
-                component.enabled = true;
-        }
-
-        /// <summary>
-        /// Desactiva un Renderer si existe.
-        /// </summary>
-        public static void DisableComponent(this Renderer renderer)
-        {
-            if (renderer != null)
-                renderer.enabled = false;
-        }
-
-        /// <summary>
-        /// Activa un Renderer si existe.
-        /// </summary>
-        public static void EnableComponent(this Renderer renderer)
-        {
-            if (renderer != null)
-                renderer.enabled = true;
-        }
-
-        /// <summary>
         /// Añade un componente al objeto (si no lo tiene ya) y notifica el resultado.
         /// En modo edición la operación se difiere con <c>EditorApplication.delayCall</c>,
         /// evitando errores al añadir componentes durante OnValidate u otros callbacks del editor.

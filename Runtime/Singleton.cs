@@ -29,7 +29,7 @@ namespace EMT
         static bool _hooked;
 
         /// <summary>Instancia única. Se crea o busca la primera vez que se pide.</summary>
-        public static T Instance
+        public static T singleton
         {
             get
             {
