@@ -2,7 +2,7 @@ using System;
 using System.Reflection;
 using UnityEngine;
 
-namespace EMT
+namespace EMT.Core
 {
     /// <summary>Interfaz marcadora. No exige implementar nada.</summary>
     public interface ISingleton { }

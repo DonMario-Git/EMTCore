@@ -1,74 +1,75 @@
-using EMT;
-using EMT.Core;
 using NaughtyAttributes;
 using UnityEngine;
 
-public class AleatorizadorController : MonoBehaviour
+namespace EMT.Core
 {
-    [BoxGroup("Posicion")]
-    public bool posicion;
-
-    [ShowIf("posicion")]
-    [BoxGroup("Posicion")]
-    public bool usarLocal;
-
-    [ShowIf("usarLocal")]
-    [BoxGroup("Posicion")]
-    [Required]
-    public Transform padre;
-
-    [ShowIf("posicion")]
-    [BoxGroup("Posicion")]
-    public Vector3 posIncio;
-
-    [ShowIf("posicion")]
-    [BoxGroup("Posicion")]
-    public Vector3 posFinal;
-
-    [ShowIf("posicion")]
-    [BoxGroup("Posicion")]
-    public Color posGizmosColor = Color.yellow;
-
-    private void Awake()
+    public class AleatorizadorController : MonoBehaviour
     {
-        Probar();
-    }
+        [BoxGroup("Posicion")]
+        public bool posicion;
 
-    [Button]
-    public void Probar()
-    {
-        if (!posicion) return;
+        [ShowIf("posicion")]
+        [BoxGroup("Posicion")]
+        public bool usarLocal;
 
-        var posInicioFix = padre != null && usarLocal ? padre.position + posIncio : posIncio;
-        var posFinalFix = padre != null && usarLocal ? padre.position + posFinal : posFinal;
+        [ShowIf("usarLocal")]
+        [BoxGroup("Posicion")]
+        [Required]
+        public Transform padre;
 
-        transform.position = Utilities.RandomRange(posInicioFix, posFinalFix);
-    }
+        [ShowIf("posicion")]
+        [BoxGroup("Posicion")]
+        public Vector3 posIncio;
 
-    [Button]
-    public void CopiarPosicionInicial()
-    {
-        posIncio = transform.localPosition;
-    }
+        [ShowIf("posicion")]
+        [BoxGroup("Posicion")]
+        public Vector3 posFinal;
 
-    [Button]
-    public void CopiarPosicionFinal()
-    {
-        posFinal = transform.localPosition;
-    }
+        [ShowIf("posicion")]
+        [BoxGroup("Posicion")]
+        public Color posGizmosColor = Color.yellow;
 
-    private void OnDrawGizmosSelected()
-    {
-        if (posicion)
+        private void Awake()
         {
-            Gizmos.color = posGizmosColor;
+            Probar();
+        }
+
+        [Button]
+        public void Probar()
+        {
+            if (!posicion) return;
 
             var posInicioFix = padre != null && usarLocal ? padre.position + posIncio : posIncio;
             var posFinalFix = padre != null && usarLocal ? padre.position + posFinal : posFinal;
 
-            Gizmos.DrawWireSphere(posInicioFix, 1);
-            Gizmos.DrawWireSphere(posFinalFix, 1);
-            Gizmos.DrawLine(posInicioFix, posFinalFix);
+            transform.position = Utilities.RandomRange(posInicioFix, posFinalFix);
+        }
+
+        [Button]
+        public void CopiarPosicionInicial()
+        {
+            posIncio = transform.localPosition;
+        }
+
+        [Button]
+        public void CopiarPosicionFinal()
+        {
+            posFinal = transform.localPosition;
+        }
+
+        private void OnDrawGizmosSelected()
+        {
+            if (posicion)
+            {
+                Gizmos.color = posGizmosColor;
+
+                var posInicioFix = padre != null && usarLocal ? padre.position + posIncio : posIncio;
+                var posFinalFix = padre != null && usarLocal ? padre.position + posFinal : posFinal;
+
+                Gizmos.DrawWireSphere(posInicioFix, 1);
+                Gizmos.DrawWireSphere(posFinalFix, 1);
+                Gizmos.DrawLine(posInicioFix, posFinalFix);
+            }
         }
     }
-}
+}                   
