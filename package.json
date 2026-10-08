@@ -1,6 +1,6 @@
 {
   "name": "com.emt.core",
-  "version": "1.0.9",
+  "version": "1.1.0",
   "displayName": "EMT Core",
   "description": "Core of emt games code, require: https://github.com/DonMario-Git/EMTPackageManager.git",
   "unity": "2022.3",

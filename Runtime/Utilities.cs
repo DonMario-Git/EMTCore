@@ -7,6 +7,8 @@ using System.Text.RegularExpressions;
 using UnityEngine;
 using Object = UnityEngine.Object;
 using Random = UnityEngine.Random;
+using UnityEngine.UI;
+
 
 // UnityEditor no existe en los builds: el using DEBE estar protegido,
 // de lo contrario el proyecto no compila para plataforma.
@@ -1201,6 +1203,8 @@ namespace EMT.Core
 
             return ColorUtility.TryParseHtmlString(hex, out color);
         }
+
+        public static void SetAlpha(this Graphic g, float value) => g.color = new Color(g.color.r, g.color.g, g.color.b, value);
 
         #endregion
     }
